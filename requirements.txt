@@ -6,7 +6,7 @@ torch
 transformers==4.40.0
 langchain-core==0.3.10
 langchain-community==0.3.2
-langchain-text-splitters==0.0.2  <-- THE FIX
+langchain-text-splitters==0.0.2  
 faiss-cpu==1.7.3
 scikit-learn==1.5.0
 openai==1.40.0
