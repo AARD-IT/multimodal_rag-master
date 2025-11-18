@@ -16,8 +16,10 @@ from pathlib import Path
 import re 
 from typing import Optional
 
+# === 1. CRITICAL FIX: PAGE CONFIG MUST BE FIRST ===
+st.set_page_config(page_title="Multimodal RAG for PDF Q&A", layout="wide")
+
 # === API Key Setup ===
-# UPDATED: Prioritize Secrets. secure your key!
 if "OPENAI_API_KEY" in st.secrets:
     API_KEY = st.secrets["OPENAI_API_KEY"]
 else:
@@ -30,12 +32,14 @@ warnings.filterwarnings("ignore")
 @st.cache_resource
 def load_clip_model():
     """Caches the CLIP model and processor."""
+    # This spinner was causing the crash because it ran before page config
     with st.spinner("Loading CLIP Model..."):
         clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
         clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
         clip_model.eval()
     return clip_model, clip_processor
 
+# This runs globally on startup
 clip_model, clip_processor = load_clip_model()
 
 # Initialize Client safely
@@ -114,7 +118,7 @@ def process_pdf(file_bytes, file_name):
     )
     return all_docs, image_data_store, vector_store
 
-# --- NEW HELPER FUNCTION ---
+# --- HELPER FUNCTION ---
 def extract_page_number(query: str) -> Optional[int]:
     """Extracts a page number from the query using regex."""
     match = re.search(r'page\s*(\d+)|on\s*(\d+)', query.lower())
@@ -124,10 +128,6 @@ def extract_page_number(query: str) -> Optional[int]:
 
 # --- RETRIEVAL FUNCTION WITH PAGE FILTERING ---
 def retrieve_multimodal(query, k=5):
-    """
-    Retrieves the top k most relevant documents, enforcing page metadata filtering
-    if a page number is found in the query.
-    """
     if "vector_store" not in st.session_state or "all_docs" not in st.session_state:
         st.error("Please process a PDF first.")
         return []
@@ -149,7 +149,6 @@ def retrieve_multimodal(query, k=5):
          
         if not filtered_docs:
             st.warning(f"No content indexed for Page {target_page_number}. Searching globally.")
-            pass 
         else:
             filtered_embeddings = [
                 embed_text(doc.page_content) if doc.metadata['type'] == 'text' 
@@ -165,12 +164,11 @@ def retrieve_multimodal(query, k=5):
              
             return temp_vector_store.similarity_search_by_vector(embedding=query_embedding, k=k)
 
-    # 2. Standard Semantic Search (Fallback or Global Search)
+    # 2. Standard Semantic Search
     return vector_store.similarity_search_by_vector(embedding=query_embedding, k=k)
 
 # --- Message Builder ---
 def create_multimodal_message(query, retrieved_docs):
-    """Builds the final list of content objects for the multimodal LLM call."""
     content = []
     content.append({"type": "text", "text": f"Question: {query}\n\nContext:"})
 
@@ -196,10 +194,8 @@ def create_multimodal_message(query, retrieved_docs):
 
 # === Q&A Interface Sub-Function ===
 def run_qa_interface():
-    """Contains the text input and answer logic, run after processing."""
     st.markdown(f"**Document Loaded:** `{st.session_state.uploaded_file_name}`")
      
-    # --- PREDEFINED QUESTIONS ---
     if 'questions_set' not in st.session_state:
         st.session_state.questions_set = True
         st.markdown("**Example Questions:**")
@@ -240,7 +236,6 @@ def run_qa_interface():
                         with cols[i]:
                             st.image(image, caption=f"Page {doc.metadata['page']+1} Context Image", use_container_width=True)
 
-            # === DISPLAY FINAL ANSWER ===
             st.markdown("### 🧠 Answer:")
             st.markdown(f"<div style='background-color:#fff5cc; padding:15px; border-radius:10px; font-size:16px;'>{answer}</div>", unsafe_allow_html=True)
              
@@ -250,8 +245,8 @@ def run_qa_interface():
 
 # === Main Streamlit App ===
 def main():
-    st.set_page_config(page_title="Multimodal RAG for PDF Q&A", layout="wide")
-
+    # st.set_page_config REMOVED FROM HERE AND MOVED TO TOP
+    
     # --- LOGO AND HEADER ---
     LOGO_PATH = Path("assets") / "an_logo.png" 
      
@@ -277,27 +272,22 @@ def main():
         
     st.markdown("---")
 
-    # Check for API Key
     if not API_KEY:
         st.error("🚨 API Key not detected! Please set 'OPENAI_API_KEY' in your Streamlit Secrets.")
         st.stop()
      
-    # --- Initialize flag outside the button ---
     if 'demo_loaded' not in st.session_state:
         st.session_state.demo_loaded = False
         
-    # === MODE SELECTION ===
     mode = st.radio(
         "Select Input Mode:",
         ("Upload Your Documents", "Run Demo (Uses Internal Samples)"),
         horizontal=True
     )
 
-    # 1. UPLOAD MODE 
     if mode == "Upload Your Documents":
         uploaded_file = st.file_uploader("Upload a PDF document:", type="pdf")
         
-        # Reset demo state when switching mode or uploading a new file
         if uploaded_file is not None or st.session_state.demo_loaded:
             st.session_state.demo_loaded = False
 
@@ -312,11 +302,9 @@ def main():
             if "vector_store" in st.session_state:
                 run_qa_interface()
 
-    # 2. DEMO MODE
     elif mode == "Run Demo (Uses Internal Samples)":
         DEMO_ROOT_FOLDER = "demo_documents"
         
-        # --- File Loading Button ---
         if st.button("Load Demo PDF", type="primary"):
             st.header("⚡ Processing Demo File")
             
@@ -351,15 +339,10 @@ def main():
                 st.session_state.demo_loaded = False
                 return
      
-    # --- Q&A Interface persists based on the flag ---
     if st.session_state.demo_loaded:
         run_qa_interface()
     elif mode == "Run Demo (Uses Internal Samples)":
         st.info("Click 'Load Demo PDF' to process the internal file.")
 
-
 if __name__ == "__main__":
     main()
-  
-
-       
