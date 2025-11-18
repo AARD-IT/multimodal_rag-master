@@ -3,3 +3,4 @@ libxrender1
 libfontconfig1
 libjpeg-dev
 zlib1g-dev
+libpango1.0-0
