@@ -11,15 +11,17 @@ from transformers import CLIPProcessor, CLIPModel
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from sklearn.metrics.pairwise import cosine_similarity
 from openai import OpenAI
 from pathlib import Path
 import re 
 from typing import Optional
 
 # === API Key Setup ===
-API_KEY = os.environ.get("OPENAI_API_KEY", "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")
-os.environ["OPENAI_API_KEY"] = API_KEY
+# UPDATED: Prioritize Secrets. secure your key!
+if "OPENAI_API_KEY" in st.secrets:
+    API_KEY = st.secrets["OPENAI_API_KEY"]
+else:
+    API_KEY = os.environ.get("OPENAI_API_KEY")
 
 # === Suppress warnings ===
 warnings.filterwarnings("ignore")
@@ -35,7 +37,12 @@ def load_clip_model():
     return clip_model, clip_processor
 
 clip_model, clip_processor = load_clip_model()
-client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=API_KEY)
+
+# Initialize Client safely
+if API_KEY:
+    client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=API_KEY)
+else:
+    client = None
 
 # === Core RAG Logic Functions ===
 
@@ -96,7 +103,8 @@ def process_pdf(file_bytes, file_name):
             except Exception as e:
                 pass 
     doc.close()
-    os.remove(temp_pdf_path)
+    if os.path.exists(temp_pdf_path):
+        os.remove(temp_pdf_path)
 
     embeddings_array = np.array(all_embeddings)
     vector_store = FAISS.from_embeddings(
@@ -128,17 +136,17 @@ def retrieve_multimodal(query, k=5):
     all_docs = st.session_state.all_docs
     vector_store = st.session_state.vector_store
     image_data_store = st.session_state.image_data_store
-    
+     
     target_page_number = extract_page_number(query)
-    
+     
     # 1. Page Filtering Logic
     if target_page_number is not None:
         target_page_index = target_page_number - 1
-        
+         
         filtered_docs = [
             doc for doc in all_docs if doc.metadata.get("page") == target_page_index
         ]
-        
+         
         if not filtered_docs:
             st.warning(f"No content indexed for Page {target_page_number}. Searching globally.")
             pass 
@@ -148,19 +156,19 @@ def retrieve_multimodal(query, k=5):
                 else embed_image(Image.open(io.BytesIO(base64.b64decode(image_data_store[doc.metadata['image_id']])))) 
                 for doc in filtered_docs
             ]
-            
+             
             temp_vector_store = FAISS.from_embeddings(
                 text_embeddings=[(doc.page_content, emb) for doc, emb in zip(filtered_docs, filtered_embeddings)],
                 embedding=None,
                 metadatas=[doc.metadata for doc in filtered_docs]
             )
-            
+             
             return temp_vector_store.similarity_search_by_vector(embedding=query_embedding, k=k)
 
     # 2. Standard Semantic Search (Fallback or Global Search)
     return vector_store.similarity_search_by_vector(embedding=query_embedding, k=k)
 
-# --- Message Builder (Unchanged) ---
+# --- Message Builder ---
 def create_multimodal_message(query, retrieved_docs):
     """Builds the final list of content objects for the multimodal LLM call."""
     content = []
@@ -177,7 +185,6 @@ def create_multimodal_message(query, retrieved_docs):
     for doc in image_docs:
         image_id = doc.metadata.get("image_id")
         if image_id in image_data_store:
-            # For debugging context, we display the image directly in the message payload.
             content.append({"type": "text", "text": f"\n[Image from page {doc.metadata['page']}]:\n"})
             content.append({
                 "type": "image_url",
@@ -187,11 +194,11 @@ def create_multimodal_message(query, retrieved_docs):
     content.append({"type": "text", "text": "\n\nPlease answer the question based on the provided text and images."})
     return {"role": "user", "content": content}
 
-# === Q&A Interface Sub-Function (Updated to display retrieved images to user) ===
+# === Q&A Interface Sub-Function ===
 def run_qa_interface():
     """Contains the text input and answer logic, run after processing."""
     st.markdown(f"**Document Loaded:** `{st.session_state.uploaded_file_name}`")
-    
+     
     # --- PREDEFINED QUESTIONS ---
     if 'questions_set' not in st.session_state:
         st.session_state.questions_set = True
@@ -202,11 +209,15 @@ def run_qa_interface():
     user_query = st.text_input("🔍 Enter your question:", placeholder="e.g. What does the chart on page 1 show?")
 
     if st.button("🧠 Ask"):
+        if not client:
+             st.error("API Key missing. Please add it to Streamlit Secrets.")
+             return
+
         if user_query.strip():
             with st.spinner("🔎 Analyzing document..."):
                 results = retrieve_multimodal(user_query, k=5)
                 message = create_multimodal_message(user_query, results)
-                
+                 
                 response = client.chat.completions.create(
                     model="gpt-4o", 
                     messages=[message],
@@ -216,7 +227,7 @@ def run_qa_interface():
 
             # === DISPLAY RETRIEVED IMAGES ALONGSIDE ANSWER ===
             image_docs = [doc for doc in results if doc.metadata.get("type") == "image"]
-            
+             
             if image_docs:
                 st.markdown("### 🖼️ Context Image Retrieved:")
                 cols = st.columns(len(image_docs))
@@ -232,7 +243,7 @@ def run_qa_interface():
             # === DISPLAY FINAL ANSWER ===
             st.markdown("### 🧠 Answer:")
             st.markdown(f"<div style='background-color:#fff5cc; padding:15px; border-radius:10px; font-size:16px;'>{answer}</div>", unsafe_allow_html=True)
-            
+             
         else:
             st.warning("⚠️ Please enter a question to continue.")
 
@@ -243,7 +254,7 @@ def main():
 
     # --- LOGO AND HEADER ---
     LOGO_PATH = Path("assets") / "an_logo.png" 
-    
+     
     col_logo, col_title = st.columns([1, 4])
     with col_logo:
         try:
@@ -254,12 +265,12 @@ def main():
                         st.image(str(Path('assets') / f), width=150)
                         found_logo = True
                         break
-            
+             
             if not found_logo:
-                st.warning("⚠️ Logo file not found at 'assets/straive_logo.png'. **ACTION: Run the app from the project root!**")
+                st.warning("⚠️ Logo file not found at 'assets/straive_logo.png'.")
         except Exception as e:
-            st.error(f"Logo display error: Ensure 'assets' folder exists in the project root.")
-            
+            st.error(f"Logo display error: {e}")
+             
     with col_title:
         st.title("🤖 Multimodal RAG for PDF Q&A")
         st.subheader("Ask questions from text & images inside your PDF!")
@@ -267,10 +278,10 @@ def main():
     st.markdown("---")
 
     # Check for API Key
-    if not os.environ.get("OPENAI_API_KEY") or "YOUR_COMPANY_KEY" in os.environ.get("OPENAI_API_KEY"):
-        st.error("API Key not correctly configured. Please set the OPENAI_API_KEY environment variable.")
+    if not API_KEY:
+        st.error("🚨 API Key not detected! Please set 'OPENAI_API_KEY' in your Streamlit Secrets.")
         st.stop()
-    
+     
     # --- Initialize flag outside the button ---
     if 'demo_loaded' not in st.session_state:
         st.session_state.demo_loaded = False
@@ -333,13 +344,13 @@ def main():
                 st.success(f"Demo PDF '{file_name}' processed successfully!")
                 
                 st.session_state.uploaded_file_name = file_name
-                st.session_state.demo_loaded = True # SET THE FLAG ONLY ON SUCCESS
+                st.session_state.demo_loaded = True 
 
             except Exception as e:
                 st.error(f"An error occurred loading the demo file: {e}. Check file permissions.")
                 st.session_state.demo_loaded = False
                 return
-    
+     
     # --- Q&A Interface persists based on the flag ---
     if st.session_state.demo_loaded:
         run_qa_interface()
@@ -349,3 +360,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+  
+
+       
