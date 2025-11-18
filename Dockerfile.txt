@@ -1,0 +1,34 @@
+# Dockerfile content for Multimodal RAG
+
+# 1. Base Image: Use a stable Python image.
+FROM python:3.10-slim-buster
+
+# 2. Set the working directory inside the container
+WORKDIR /app
+
+# 3. Install System Dependencies: CRITICAL for PyMuPDF and general image libraries
+# build-essential is often needed for complex C extensions during pip install.
+# libglib2.0-0 and ghostscript are necessary for robust PDF/image handling.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    libglib2.0-0 \
+    ghostscript \
+    && rm -rf /var/lib/apt/lists/*
+
+# 4. Install Python Dependencies
+# Copy requirements.txt first to leverage Docker caching.
+COPY requirements.txt .
+# Run pip install. It will use the --find-links for PyTorch CPU.
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 5. Copy Application Code and Assets
+# This copies app.py, assets/, demo_documents/, and .streamlit/ config.
+COPY . /app
+
+# 6. Expose the port Streamlit uses
+EXPOSE 8501
+
+# 7. Command to Run the Application
+# Standard Streamlit command. Port 8501 is internal.
+CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
