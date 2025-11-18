@@ -1,34 +1,22 @@
-##############################################
-# Streamlit Multimodal RAG Requirements
-##############################################
-
-# Core
 streamlit==1.37.0
 numpy==1.26.4
 Pillow==10.2.0
 
-# LangChain (MATCHING VERSIONS)
-langchain-core==0.3.11
+langchain-core==0.3.12
 langchain-community==0.3.3
 langchain-text-splitters==0.3.0
 
-# Vector DB
 faiss-cpu==1.7.4
 
-# Deep Learning
 transformers==4.41.2
 
-# CPU-safe PyTorch
 torch==2.2.0
 torchvision==0.17.0
 torchaudio==2.2.0
 
-# PDF Processing
 PyMuPDF==1.24.4
 
-# ML Utilities
 scikit-learn==1.4.2
 
-# OpenAI / OpenRouter
 openai==1.35.3
 
