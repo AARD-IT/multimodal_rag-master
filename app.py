@@ -242,7 +242,7 @@ def main():
     st.set_page_config(page_title="Multimodal RAG for PDF Q&A", layout="wide")
 
     # --- LOGO AND HEADER ---
-    LOGO_PATH = Path("assets") / "straive_logo.png" 
+    LOGO_PATH = Path("assets") / "an_logo.png" 
     
     col_logo, col_title = st.columns([1, 4])
     with col_logo:
