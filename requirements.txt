@@ -2,7 +2,7 @@ streamlit==1.37.0
 numpy
 Pillow
 fitz
-torch==2.3.0
+torch
 transformers==4.40.0
 langchain-core==0.3.10
 langchain-community==0.3.2
