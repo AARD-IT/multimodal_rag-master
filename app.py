@@ -17,7 +17,7 @@ import re
 from typing import Optional
 
 # === 1. CRITICAL FIX: PAGE CONFIG MUST BE FIRST ===
-st.set_page_config(page_title="Multimodal RAG for PDF Q&A", layout="wide")
+st.set_page_config(page_title="Analytics Avenue - Multimodal RAG", layout="wide")
 
 # === API Key Setup ===
 if "OPENAI_API_KEY" in st.secrets:
@@ -31,8 +31,7 @@ warnings.filterwarnings("ignore")
 # === Initialize CLIP Model with Caching ===
 @st.cache_resource
 def load_clip_model():
-    """Caches the CLIP model and processor."""
-    # This spinner was causing the crash because it ran before page config
+    """Caches and returns the CLIP model and processor."""
     with st.spinner("Loading CLIP Model..."):
         clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
         clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
@@ -48,7 +47,9 @@ if API_KEY:
 else:
     client = None
 
-# === Core RAG Logic Functions ===
+# =============================================================================
+# Core RAG Logic Functions
+# =============================================================================
 
 def embed_image(image_data):
     if isinstance(image_data, str):
@@ -136,17 +137,17 @@ def retrieve_multimodal(query, k=5):
     all_docs = st.session_state.all_docs
     vector_store = st.session_state.vector_store
     image_data_store = st.session_state.image_data_store
-     
+      
     target_page_number = extract_page_number(query)
-     
+      
     # 1. Page Filtering Logic
     if target_page_number is not None:
         target_page_index = target_page_number - 1
-         
+          
         filtered_docs = [
             doc for doc in all_docs if doc.metadata.get("page") == target_page_index
         ]
-         
+          
         if not filtered_docs:
             st.warning(f"No content indexed for Page {target_page_number}. Searching globally.")
         else:
@@ -155,13 +156,13 @@ def retrieve_multimodal(query, k=5):
                 else embed_image(Image.open(io.BytesIO(base64.b64decode(image_data_store[doc.metadata['image_id']])))) 
                 for doc in filtered_docs
             ]
-             
+              
             temp_vector_store = FAISS.from_embeddings(
                 text_embeddings=[(doc.page_content, emb) for doc, emb in zip(filtered_docs, filtered_embeddings)],
                 embedding=None,
                 metadatas=[doc.metadata for doc in filtered_docs]
             )
-             
+              
             return temp_vector_store.similarity_search_by_vector(embedding=query_embedding, k=k)
 
     # 2. Standard Semantic Search
@@ -195,7 +196,7 @@ def create_multimodal_message(query, retrieved_docs):
 # === Q&A Interface Sub-Function ===
 def run_qa_interface():
     st.markdown(f"**Document Loaded:** `{st.session_state.uploaded_file_name}`")
-     
+      
     if 'questions_set' not in st.session_state:
         st.session_state.questions_set = True
         st.markdown("**Example Questions:**")
@@ -213,7 +214,7 @@ def run_qa_interface():
             with st.spinner("🔎 Analyzing document..."):
                 results = retrieve_multimodal(user_query, k=5)
                 message = create_multimodal_message(user_query, results)
-                 
+                  
                 response = client.chat.completions.create(
                     model="gpt-4o", 
                     messages=[message],
@@ -223,7 +224,7 @@ def run_qa_interface():
 
             # === DISPLAY RETRIEVED IMAGES ALONGSIDE ANSWER ===
             image_docs = [doc for doc in results if doc.metadata.get("type") == "image"]
-             
+              
             if image_docs:
                 st.markdown("### 🖼️ Context Image Retrieved:")
                 cols = st.columns(len(image_docs))
@@ -238,44 +239,37 @@ def run_qa_interface():
 
             st.markdown("### 🧠 Answer:")
             st.markdown(f"<div style='background-color:#fff5cc; padding:15px; border-radius:10px; font-size:16px;'>{answer}</div>", unsafe_allow_html=True)
-             
+              
         else:
             st.warning("⚠️ Please enter a question to continue.")
 
 
 # === Main Streamlit App ===
 def main():
-    # st.set_page_config REMOVED FROM HERE AND MOVED TO TOP
+    # =========================================================================
+    # UPDATED HEADER: Company Logo + Name (Analytics Avenue)
+    # =========================================================================
+    logo_url = "https://raw.githubusercontent.com/Analytics-Avenue/streamlit-dataapp/main/logo.png"
+    st.markdown(f"""
+    <div style="display:flex; align-items:center; margin-bottom:20px;">
+        <img src="{logo_url}" width="60" style="margin-right:10px;">
+        <div style="line-height:1;">
+            <div style="color:#064b86; font-size:36px; font-weight:bold; margin:0;">Analytics Avenue &</div>
+            <div style="color:#064b86; font-size:36px; font-weight:bold; margin:0;">Advanced Analytics</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # App Specific Title (Kept below branding)
+    st.title("🤖 Multimodal RAG for PDF Q&A")
+    st.subheader("Ask questions from text & images inside your PDF!")
     
-    # --- LOGO AND HEADER ---
-    LOGO_PATH = Path("assets") / "an_logo.png" 
-     
-    col_logo, col_title = st.columns([1, 4])
-    with col_logo:
-        try:
-            found_logo = False
-            if os.path.isdir('assets'):
-                for f in os.listdir('assets'):
-                    if 'logo' in f.lower() and f.lower().endswith('.png'):
-                        st.image(str(Path('assets') / f), width=150)
-                        found_logo = True
-                        break
-             
-            if not found_logo:
-                st.warning("⚠️ Logo file not found at 'assets/straive_logo.png'.")
-        except Exception as e:
-            st.error(f"Logo display error: {e}")
-             
-    with col_title:
-        st.title("🤖 Multimodal RAG for PDF Q&A")
-        st.subheader("Ask questions from text & images inside your PDF!")
-        
     st.markdown("---")
 
     if not API_KEY:
         st.error("🚨 API Key not detected! Please set 'OPENAI_API_KEY' in your Streamlit Secrets.")
         st.stop()
-     
+      
     if 'demo_loaded' not in st.session_state:
         st.session_state.demo_loaded = False
         
@@ -338,7 +332,7 @@ def main():
                 st.error(f"An error occurred loading the demo file: {e}. Check file permissions.")
                 st.session_state.demo_loaded = False
                 return
-     
+      
     if st.session_state.demo_loaded:
         run_qa_interface()
     elif mode == "Run Demo (Uses Internal Samples)":
